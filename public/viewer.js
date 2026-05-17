@@ -66,6 +66,20 @@
     return;
   }
 
+  let replyJumpHighlightTimer = null;
+  let replyJumpHighlightFadeTimer = null;
+
+  function cancelReplyJumpHighlightTimers() {
+    if (replyJumpHighlightTimer != null) {
+      clearTimeout(replyJumpHighlightTimer);
+      replyJumpHighlightTimer = null;
+    }
+    if (replyJumpHighlightFadeTimer != null) {
+      clearTimeout(replyJumpHighlightFadeTimer);
+      replyJumpHighlightFadeTimer = null;
+    }
+  }
+
   configureMarkdown();
 
   fetchShare()
@@ -284,9 +298,106 @@
   }
 
   function replyStubRoleLabel(role) {
-    if (role === 'user') return 'Користувач';
+    if (role === 'user') return 'Ви';
     if (role === 'assistant') return 'Асистент';
-    return 'Повідомлення';
+    return 'Чат';
+  }
+
+  function readReplyStubQuote(stub) {
+    const enc = stub.getAttribute('data-reply-quote');
+    if (enc == null || enc === '') return '';
+    try {
+      return decodeURIComponent(enc);
+    } catch {
+      return '';
+    }
+  }
+
+  function replyQuoteSearchTextNodes(root) {
+    const out = /** @type {Text[]} */ ([]);
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let n;
+    while ((n = w.nextNode())) {
+      const el = n.parentElement;
+      if (!el) continue;
+      if (el.closest('pre, code, script, style')) continue;
+      out.push(/** @type {Text} */ (n));
+    }
+    return out;
+  }
+
+  function clearReplyJumpHighlights(root) {
+    if (!root) return;
+    root.querySelectorAll('.msg-reply-quote-highlight').forEach((mark) => {
+      const p = mark.parentNode;
+      if (!p) return;
+      while (mark.firstChild) p.insertBefore(mark.firstChild, mark);
+      p.removeChild(mark);
+      p.normalize();
+    });
+  }
+
+  function scheduleClearReplyJumpHighlight(root) {
+    cancelReplyJumpHighlightTimers();
+    const holdMs = 800;
+    const fadeMs = 200;
+    replyJumpHighlightTimer = setTimeout(() => {
+      replyJumpHighlightTimer = null;
+      const marks = root.querySelectorAll('.msg-reply-quote-highlight');
+      if (!marks.length) return;
+      marks.forEach((m) => m.classList.add('msg-reply-quote-highlight--out'));
+      replyJumpHighlightFadeTimer = setTimeout(() => {
+        replyJumpHighlightFadeTimer = null;
+        clearReplyJumpHighlights(root);
+      }, fadeMs + 40);
+    }, holdMs);
+  }
+
+  function highlightReplyTargetQuote(targetMsg, quoteRaw) {
+    const body = targetMsg.querySelector('.msg-body');
+    if (!body) return false;
+    const q = String(quoteRaw ?? '').trim();
+    if (!q) return false;
+    const nodes = replyQuoteSearchTextNodes(body);
+    if (!nodes.length) return false;
+    const big = nodes.map((t) => t.nodeValue || '').join('');
+    const idx = big.indexOf(q);
+    if (idx === -1) return false;
+    const end = idx + q.length;
+    let acc = 0;
+    /** @type {{ tn: Text; off: number } | null} */
+    let startRef = null;
+    /** @type {{ tn: Text; off: number } | null} */
+    let endRef = null;
+    for (const tn of nodes) {
+      const len = (tn.nodeValue || '').length;
+      const segEnd = acc + len;
+      if (startRef === null && idx < segEnd) startRef = { tn, off: idx - acc };
+      if (end <= segEnd) {
+        endRef = { tn, off: end - acc };
+        break;
+      }
+      acc = segEnd;
+    }
+    if (!startRef || !endRef) return false;
+    try {
+      const range = document.createRange();
+      range.setStart(startRef.tn, startRef.off);
+      range.setEnd(endRef.tn, endRef.off);
+      const mark = document.createElement('mark');
+      mark.className = 'msg-reply-quote-highlight';
+      try {
+        range.surroundContents(mark);
+      } catch {
+        const frag = range.extractContents();
+        mark.appendChild(frag);
+        range.insertNode(mark);
+      }
+      mark.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   function renderTranscript(messages) {
@@ -324,6 +435,7 @@
         stub.type = 'button';
         stub.className = 'msg-reply-stub';
         stub.setAttribute('data-jump-to-msg', String(rid));
+        stub.setAttribute('data-reply-quote', encodeURIComponent(rquote));
         stub.setAttribute('aria-label', 'Перейти до цитованого повідомлення');
         const track = document.createElement('span');
         track.className = 'msg-reply-stub-track';
@@ -411,9 +523,16 @@
       e.preventDefault();
       const targetMsg = thread.querySelector('.msg[data-msg-id="' + mid + '"]');
       if (targetMsg) {
-        targetMsg.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        targetMsg.classList.add('msg-highlight-flash');
-        setTimeout(() => targetMsg.classList.remove('msg-highlight-flash'), 1200);
+        cancelReplyJumpHighlightTimers();
+        clearReplyJumpHighlights(thread);
+        const q = readReplyStubQuote(replyStub);
+        const picked = q && highlightReplyTargetQuote(targetMsg, q);
+        if (picked) scheduleClearReplyJumpHighlight(thread);
+        if (!picked) {
+          targetMsg.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          targetMsg.classList.add('msg-highlight-flash');
+          setTimeout(() => targetMsg.classList.remove('msg-highlight-flash'), 1200);
+        }
       }
       return;
     }
