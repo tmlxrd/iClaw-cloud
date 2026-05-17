@@ -121,6 +121,12 @@ html, body {
   min-height: 100vh;
 }
 
+/* `[hidden]` must win over component display (e.g. .loading uses display:flex).
+   Otherwise "Decrypting…" stays visible above the transcript. */
+.page [hidden] {
+  display: none !important;
+}
+
 .page-head {
   display: flex;
   align-items: center;
@@ -181,6 +187,7 @@ html, body {
 
 .messages {
   flex: 1;
+  min-height: 0;
   width: 100%;
   background: var(--chat-pane-bg);
   overflow-y: auto;
@@ -251,13 +258,28 @@ html, body {
   border: 0;
 }
 
+/* System notices — match iClaw: centered pill, role label stays sr-only */
 .msg.system {
-  align-self: stretch;
-  background: var(--system-bg);
-  border-radius: var(--msg-radius);
-  padding: 10px 14px;
-  font-size: 0.9em;
+  align-self: center;
+  width: auto;
+  max-width: min(36rem, 94%);
+  background: var(--msg-user-fill);
   color: var(--muted);
+  font-style: normal;
+  font-size: 0.8125rem;
+  text-align: center;
+  padding: 8px 14px;
+  border-radius: var(--msg-radius-user);
+  border: none;
+}
+
+.msg.system.msg-system--error {
+  color: var(--danger);
+  background: var(--warn-soft-bg);
+  border: 1px solid var(--warn-soft-border);
+  text-align: left;
+  align-self: stretch;
+  max-width: min(var(--thread-max-width), 100%);
 }
 
 /* ============================================================================
@@ -480,6 +502,7 @@ html, body {
   align-items: center;
   justify-content: center;
   flex: 1;
+  min-height: 8rem;
   color: var(--muted);
   font-size: 0.9rem;
 }

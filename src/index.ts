@@ -54,8 +54,8 @@ function buildApp(): express.Express {
         if (allow.includes(origin)) return cb(null, true);
         cb(new Error(`Origin ${origin} is not allowed by CORS`));
       },
-      methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'x-delete-token'],
+      methods: ['GET', 'POST', 'OPTIONS'],
+      allowedHeaders: ['Content-Type'],
       maxAge: 600,
     }),
   );
@@ -81,11 +81,20 @@ function buildApp(): express.Express {
   });
 
   // Landing + any other static asset (CSS/JS/icons).
+  //
+  // HTML + viewer.js use `no-cache` so a fresh deploy is visible without a
+  // hard reload; browsers still revalidate via ETag so unchanged bytes are
+  // a single 304. Vendored libs and icons keep the 1-hour cache.
   app.use(
     express.static(PUBLIC_DIR, {
       index: 'index.html',
-      maxAge: '1h',
       etag: true,
+      maxAge: '1h',
+      setHeaders(res, filePath) {
+        if (/\.(html|js)$/.test(filePath) && !filePath.includes(`${PUBLIC_DIR}/js/vendor/`)) {
+          res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+        }
+      },
     }),
   );
 

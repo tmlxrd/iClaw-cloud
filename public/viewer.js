@@ -18,15 +18,16 @@
   'use strict';
 
   const idMatch = location.pathname.match(/^\/s\/([A-Za-z0-9_-]{6,32})\/?$/);
-  if (!idMatch) {
-    showError('Invalid share URL.');
-    return;
-  }
-  const shareId = idMatch[1];
+  const shareId = idMatch ? idMatch[1] : '';
   /** @type {string | null} */
   const fragmentKeyB64 = readFragmentKey();
 
-  const $ = (sel) => /** @type {HTMLElement} */ (document.querySelector(sel));
+  const $ = (sel) => /** @type {HTMLElement | null} */ (document.querySelector(sel));
+  /** Avoid crashing the whole viewer if markup is missing or out of sync. */
+  function setText(el, text) {
+    if (el) el.textContent = text;
+  }
+
   const titleEl = $('#share-title');
   const metaEl = $('#share-meta');
   const loading = $('#loading');
@@ -36,41 +37,74 @@
   const gateError = $('#gate-error');
   const messagesSection = $('#messages');
   const thread = $('#thread');
-  const pwForm = /** @type {HTMLFormElement} */ ($('#pw-form'));
-  const pwInput = /** @type {HTMLInputElement} */ ($('#pw-input'));
+  const pwForm = /** @type {HTMLFormElement | null} */ ($('#pw-form'));
+  const pwInput = /** @type {HTMLInputElement | null} */ ($('#pw-input'));
+
+  const domOk =
+    titleEl &&
+    metaEl &&
+    loading &&
+    gate &&
+    errorSection &&
+    errorDetail &&
+    gateError &&
+    messagesSection &&
+    thread &&
+    pwForm &&
+    pwInput;
+  if (!domOk) {
+    console.error('[viewer] missing required DOM nodes — check viewer.html');
+    document.body.insertAdjacentHTML(
+      'afterbegin',
+      '<p style="padding:1rem;font-family:system-ui">Viewer page is incomplete. Hard-refresh (clear cache) or redeploy iClaw-cloud <code>public/viewer.html</code>.</p>',
+    );
+    return;
+  }
+
+  if (!idMatch || !shareId) {
+    showError('Invalid share URL.');
+    return;
+  }
 
   configureMarkdown();
 
-  fetchShare().then((blob) => {
-    if (!blob) return;
-    renderMetaFromBlob(blob);
-    if (blob.hasPassword) {
-      gate.hidden = false;
-      loading.hidden = true;
-      titleEl.textContent = 'Password required';
-      pwForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const pw = pwInput.value;
-        if (!pw) return;
-        gateError.hidden = true;
-        gateError.textContent = '';
-        try {
-          await unlockWithPassword(blob, pw);
-        } catch (err) {
+  fetchShare()
+    .then((blob) => {
+      if (!blob) return;
+      renderMetaFromBlob(blob);
+      if (blob.hasPassword) {
+        gate.hidden = false;
+        loading.hidden = true;
+        setText(titleEl, 'Password required');
+        pwForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const pw = pwInput.value;
+          if (!pw) return;
+          gateError.hidden = true;
+          setText(gateError, '');
+          try {
+            await unlockWithPassword(blob, pw);
+          } catch (err) {
+            console.error(err);
+            if (errorSection && !errorSection.hidden) return;
+            showGateError('Wrong password or corrupted payload.');
+          }
+        });
+      } else {
+        unlockWithFragment(blob).catch((err) => {
           console.error(err);
-          showGateError('Wrong password or corrupted payload.');
-        }
-      });
-    } else {
-      unlockWithFragment(blob).catch((err) => {
-        console.error(err);
-        showError(
-          'Decryption failed. The URL may be missing the key (the part after #), ' +
-            'or the share may be corrupted.',
-        );
-      });
-    }
-  });
+          if (errorSection && !errorSection.hidden) return;
+          showError(
+            'Decryption failed. The URL may be missing the key (the part after #), ' +
+              'or the share may be corrupted.',
+          );
+        });
+      }
+    })
+    .catch((err) => {
+      console.error(err);
+      showError(err instanceof Error ? err.message : 'Unexpected error while loading share.');
+    });
 
   /* ----------------------------------------- networking ----------------- */
 
@@ -84,10 +118,30 @@
         return null;
       }
       if (!res.ok) {
-        showError('Server error: ' + res.status);
+        const errText = await res.text().catch(() => '');
+        let detail = '';
+        try {
+          const j = JSON.parse(errText);
+          if (j && typeof j.error === 'string') detail = j.error;
+        } catch {
+          if (errText) detail = errText.replace(/\s+/g, ' ').slice(0, 200);
+        }
+        showError(
+          detail
+            ? `Server error (${res.status}): ${detail}`
+            : 'Server error: ' + res.status,
+        );
         return null;
       }
-      return await res.json();
+      const raw = await res.text();
+      try {
+        return JSON.parse(raw);
+      } catch {
+        throw new Error(
+          'Share API returned non-JSON (check you are on iClaw-cloud, not a proxy HTML page): ' +
+            raw.replace(/\s+/g, ' ').slice(0, 180),
+        );
+      }
     } catch (err) {
       console.error(err);
       showError('Network error: ' + (err && err.message ? err.message : 'unknown'));
@@ -100,7 +154,7 @@
     if (data.expiresAt) parts.push('expires ' + new Date(data.expiresAt).toLocaleString());
     if (data.maxViews) parts.push(`view ${data.viewCount}/${data.maxViews}`);
     if (data.hasPassword) parts.push('password');
-    metaEl.textContent = parts.join(' · ');
+    setText(metaEl, parts.join(' · '));
   }
 
   /* ----------------------------------------- unlock paths ---------------- */
@@ -148,32 +202,50 @@
   }
 
   async function decryptAndRender(blob, key) {
-    loading.hidden = false;
-    const ciphertext = base64ToBytes(blob.ciphertext);
-    const nonce = base64ToBytes(blob.nonce);
-    const plainBuf = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: nonce },
-      key,
-      ciphertext,
-    );
+    try {
+      loading.hidden = false;
+      const ciphertext = base64ToBytes(blob.ciphertext);
+      const nonce = base64ToBytes(blob.nonce);
+      const plainBuf = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: nonce },
+        key,
+        ciphertext,
+      );
 
-    const gunzipped = await gunzip(new Uint8Array(plainBuf));
-    const text = new TextDecoder().decode(gunzipped);
-    /** @type {{title?:string, agent?:string, messages?: Array<{role:string,content:string,createdAt?:string}>}} */
-    const payload = JSON.parse(text);
+      const gunzipped = await gunzip(new Uint8Array(plainBuf));
+      const text = new TextDecoder().decode(gunzipped);
+      /** @type {{title?:string, agent?:string, messages?: Array<{role:string,content:string,createdAt?:string}>}} */
+      const payload = JSON.parse(text);
 
-    titleEl.textContent = payload.title || 'Shared chat';
-    const subParts = [];
-    if (payload.agent) subParts.push(payload.agent);
-    if (Array.isArray(payload.messages)) subParts.push(`${payload.messages.length} messages`);
-    if (metaEl.textContent) subParts.push(metaEl.textContent);
-    metaEl.textContent = subParts.join(' · ');
+      setText(titleEl, payload.title || 'Shared chat');
+      const subParts = [];
+      if (payload.agent) subParts.push(payload.agent);
+      if (Array.isArray(payload.messages)) subParts.push(`${payload.messages.length} messages`);
+      const prevMeta = metaEl.textContent || '';
+      if (prevMeta) subParts.push(prevMeta);
+      setText(metaEl, subParts.join(' · '));
 
-    renderTranscript(payload.messages || []);
+      renderTranscript(payload.messages || []);
 
-    loading.hidden = true;
-    messagesSection.hidden = false;
-    document.title = (payload.title || 'Shared chat') + ' — iClaw share';
+      loading.hidden = true;
+      messagesSection.hidden = false;
+      document.title = (payload.title || 'Shared chat') + ' — iClaw share';
+    } catch (err) {
+      console.error(err);
+      loading.hidden = true;
+      if (messagesSection) messagesSection.hidden = true;
+      let msg =
+        err instanceof Error
+          ? err.name === 'OperationError' || err.name === 'InvalidCharacterError'
+            ? 'Decryption failed — wrong key, corrupted ciphertext, or incompatible data.'
+            : err.message
+          : String(err);
+      if (err instanceof Error && /Unexpected token|JSON/.test(err.message)) {
+        msg = 'Decrypted payload is not valid JSON (version mismatch or truncated upload).';
+      }
+      showError(msg);
+      throw err;
+    }
   }
 
   /* ----------------------------------------- markdown + transcript ------ */
@@ -183,7 +255,7 @@
     const VIDEO_EXT_RE = /\.(mp4|webm|ogg|mov|m4v)(\?[^#]*)?$/i;
 
     if (typeof window.marked.setOptions === 'function') {
-      window.marked.setOptions({ breaks: true, gfm: true });
+      window.marked.setOptions({ breaks: true, gfm: true, silent: true });
     }
     if (typeof window.marked.use === 'function') {
       window.marked.use({
@@ -208,10 +280,18 @@
   }
 
   function renderTranscript(messages) {
+    if (!thread) return;
     thread.replaceChildren();
     for (const m of messages) {
       const wrap = document.createElement('div');
       wrap.className = 'msg ' + (m.role || 'system');
+      const contentStr = String(m.content || '');
+      if (
+        (m.role || '').toLowerCase() === 'system' &&
+        /^Error:/i.test(contentStr.trim())
+      ) {
+        wrap.classList.add('msg-system--error');
+      }
       const role = document.createElement('div');
       role.className = 'role';
       role.textContent = m.role || '';
@@ -231,7 +311,12 @@
     if (!src) return '';
     if (window.marked && typeof window.marked.parse === 'function') {
       try {
-        return window.marked.parse(src);
+        const out = window.marked.parse(src);
+        if (out != null && typeof /** @type {{ then?: unknown }} */ (out).then === 'function') {
+          console.warn('[viewer] marked.parse returned a Promise; falling back to escaped text');
+          return '<p>' + escapeHtml(src).replace(/\n/g, '<br>') + '</p>';
+        }
+        return out;
       } catch {
         /* fall through to escape */
       }
@@ -333,10 +418,24 @@
     while (b.length % 4 !== 0) b += '=';
     return base64ToBytes(b);
   }
+  /**
+   * Extract `k` from the URL fragment. Avoid relying on URLSearchParams alone:
+   * `application/x-www-form-urlencoded` rules treat `+` as space, which would
+   * corrupt a hypothetical standard-base64 key; we also tolerate `#/?k=`.
+   */
   function readFragmentKey() {
-    const frag = location.hash.startsWith('#') ? location.hash.slice(1) : '';
-    if (!frag) return null;
-    return new URLSearchParams(frag).get('k');
+    let h = typeof location !== 'undefined' && location.hash ? location.hash.replace(/^#/, '') : '';
+    if (!h) return null;
+    h = h.replace(/^\/?\??/, '');
+    const m = /(?:^|[?&])k=([^&]*)/.exec(h);
+    if (!m || m[1] === undefined || m[1] === '') return null;
+    let v = m[1];
+    try {
+      v = decodeURIComponent(v.replace(/\+/g, '%2B'));
+    } catch {
+      /* use raw fragment slice */
+    }
+    return v || null;
   }
   function escapeHtml(s) {
     return s
@@ -350,14 +449,14 @@
   /* ----------------------------------------- UI helpers ---------------- */
 
   function showError(text) {
-    loading.hidden = true;
-    gate.hidden = true;
-    errorDetail.textContent = text;
-    errorSection.hidden = false;
-    titleEl.textContent = 'Share unavailable';
+    if (loading) loading.hidden = true;
+    if (gate) gate.hidden = true;
+    setText(errorDetail, text);
+    if (errorSection) errorSection.hidden = false;
+    setText(titleEl, 'Share unavailable');
   }
   function showGateError(text) {
-    gateError.textContent = text;
-    gateError.hidden = false;
+    setText(gateError, text);
+    if (gateError) gateError.hidden = false;
   }
 })();

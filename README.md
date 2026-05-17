@@ -18,7 +18,7 @@ Chat → gzip → AES-256-GCM  ──upload──▶  store ciphertext + TTL
 Key generation, encryption, and decryption all happen in the browser via the WebCrypto API. The server is a thin Express + Mongoose app that:
 
 - accepts POSTed ciphertext blobs with metadata (TTL, optional `wrappedKey` + `salt` if password-protected, optional `maxViews` for burn-after-read);
-- returns a short share id and a one-shot `deleteToken` for revocation;
+- returns a short share id and public URL;
 - serves the **viewer page** at `/s/<id>` (static HTML + JS that does the decryption);
 - auto-deletes expired shares via MongoDB's TTL index.
 
@@ -41,9 +41,8 @@ For production: set `NODE_ENV=production`, point `MONGO_URL` at a managed cluste
 
 | Method | Path | What |
 |---|---|---|
-| `POST` | `/api/shares` | Upload encrypted blob → `{id, url, deleteToken, expiresAt}` |
+| `POST` | `/api/shares` | Upload encrypted blob → `{id, url, expiresAt}` |
 | `GET`  | `/api/shares/:id` | Fetch ciphertext + metadata. Increments view counter; deletes the doc if `maxViews` reached |
-| `DELETE` | `/api/shares/:id` | Revoke. Requires `x-delete-token` header |
 | `GET`  | `/s/:id` | Static viewer page — decrypts in browser |
 | `GET`  | `/healthz` | Liveness probe |
 

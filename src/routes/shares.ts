@@ -5,23 +5,19 @@
  *     Body: { ciphertext, nonce, salt?, wrappedKey?, hasPassword,
  *             ttlDays, maxViews? }
  *     All binary fields are base64 strings on the wire.
- *     Response: { id, url, deleteToken, expiresAt }
+ *     Response: { id, url, expiresAt }
  *
  *   GET /api/shares/:id
  *     Response: { ciphertext, nonce, salt?, wrappedKey?, hasPassword,
  *                 viewCount, maxViews, expiresAt }
  *     If maxViews is set and reached after this read, the doc is deleted.
  *
- *   DELETE /api/shares/:id
- *     Header: x-delete-token: <token from POST response>
- *     Response: { ok: true }
- *
  * Routes never touch the cleartext. They validate sizes/shapes, write the
  * blob, and return enough metadata for the client viewer to do its work.
  */
 
 import { Router } from 'express';
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { Share } from '../models/Share';
 import { config } from '../config';
@@ -54,15 +50,6 @@ class HttpError extends Error {
     super(message);
     this.status = status;
   }
-}
-
-/** Compare hex strings without leaking timing info. */
-function constantTimeEqualsHex(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  const ab = Buffer.from(a, 'hex');
-  const bb = Buffer.from(b, 'hex');
-  if (ab.length !== bb.length || ab.length === 0) return false;
-  return timingSafeEqual(ab, bb);
 }
 
 /* ----------------------------------------------------- POST /api/shares -- */
@@ -112,11 +99,6 @@ sharesRouter.post('/', createLimiter, async (req, res, next) => {
       }
     }
 
-    // Generate a delete token and store only its hash. The raw token goes back
-    // to the creator exactly once.
-    const deleteToken = randomBytes(24).toString('base64url');
-    const deleteTokenHash = sha256Hex(deleteToken);
-
     const now = Date.now();
     const expiresAt = new Date(now + body.ttlDays * 24 * 60 * 60 * 1000);
 
@@ -129,7 +111,6 @@ sharesRouter.post('/', createLimiter, async (req, res, next) => {
       salt,
       wrappedKey,
       hasPassword: body.hasPassword,
-      deleteTokenHash,
       maxViews: body.maxViews ?? null,
       expiresAt,
       size: ciphertext.length,
@@ -146,7 +127,6 @@ sharesRouter.post('/', createLimiter, async (req, res, next) => {
     res.status(201).json({
       id: doc._id,
       url: `${config.baseUrl}/s/${doc._id}`,
-      deleteToken,
       expiresAt: doc.expiresAt.toISOString(),
     });
   } catch (err) {
@@ -216,39 +196,6 @@ sharesRouter.get('/:id', readLimiter, async (req, res, next) => {
     }
 
     res.json(payload);
-  } catch (err) {
-    next(err);
-  }
-});
-
-/* ----------------------------------------------------- DELETE /api/shares/:id */
-
-sharesRouter.delete('/:id', async (req, res, next) => {
-  try {
-    const id = String(req.params.id || '').trim();
-    if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) {
-      throw new HttpError(400, 'invalid id');
-    }
-    const token = String(req.header('x-delete-token') || '').trim();
-    if (!token) {
-      throw new HttpError(401, 'x-delete-token header required');
-    }
-
-    const doc = await Share.findById(id);
-    if (!doc) {
-      // Idempotent — already gone is fine.
-      res.json({ ok: true, alreadyGone: true });
-      return;
-    }
-    const incomingHash = sha256Hex(token);
-    if (!constantTimeEqualsHex(incomingHash, doc.deleteTokenHash)) {
-      throw new HttpError(403, 'wrong delete token');
-    }
-    await Share.deleteOne({ _id: id });
-    if (config.logAccess) {
-      console.log(`[shares] DELETE id=${id}`);
-    }
-    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

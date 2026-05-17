@@ -48,12 +48,8 @@ const ShareSchema = new Schema(
     /** Cached for client UI; redundant with (salt && wrappedKey) being set. */
     hasPassword: { type: Boolean, required: true, default: false },
 
-    /**
-     * Hash of the random `deleteToken` we hand back to the creator. We never
-     * store the token itself, only its sha256 — matching against incoming
-     * DELETE auth headers.
-     */
-    deleteTokenHash: { type: String, required: true },
+    /** Legacy field; manual revoke was removed. New shares omit this. */
+    deleteTokenHash: { type: String, default: null },
 
     /** How many times the blob has been fetched via GET. */
     viewCount: { type: Number, required: true, default: 0 },
