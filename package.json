@@ -1,0 +1,36 @@
+{
+  "name": "iclaw-cloud",
+  "version": "0.1.0",
+  "description": "End-to-end encrypted chat share server for iClaw. Stores ciphertext only; keys live in URL fragments or behind a password.",
+  "private": true,
+  "license": "MIT",
+  "homepage": "https://github.com/tmlxrd/iClaw-cloud",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tmlxrd/iClaw-cloud.git"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "compression": "^1.7.5",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "mongoose": "^8.8.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/compression": "^1.7.5",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.7.5",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3"
+  }
+}

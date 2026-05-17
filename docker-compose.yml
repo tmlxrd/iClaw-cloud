@@ -1,0 +1,16 @@
+# Local MongoDB for development. Production should use a managed service
+# (Mongo Atlas free tier covers everything iClaw-cloud needs).
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: iclaw-cloud-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    command: ["--bind_ip_all", "--quiet"]
+
+volumes:
+  mongo-data:
