@@ -217,7 +217,7 @@
 
       const gunzipped = await gunzip(new Uint8Array(plainBuf));
       const text = new TextDecoder().decode(gunzipped);
-      /** @type {{title?:string, agent?:string, messages?: Array<{role:string,content:string,createdAt?:string}>}} */
+      /** @type {{version?:number,title?:string, agent?:string, messages?: Array<Record<string, unknown>>}} */
       const payload = JSON.parse(text);
 
       setDecryptLoading(false);
@@ -283,6 +283,12 @@
     }
   }
 
+  function replyStubRoleLabel(role) {
+    if (role === 'user') return 'Користувач';
+    if (role === 'assistant') return 'Асистент';
+    return 'Повідомлення';
+  }
+
   function renderTranscript(messages) {
     if (!thread) return;
     thread.replaceChildren();
@@ -296,14 +302,49 @@
       ) {
         wrap.classList.add('msg-system--error');
       }
+      const id = m.id != null ? Number(m.id) : NaN;
+      if (Number.isFinite(id)) wrap.dataset.msgId = String(id);
+
       const role = document.createElement('div');
       role.className = 'role';
       role.textContent = m.role || '';
+
+      const rid = Number(m.replyToMessageId ?? m.reply_to_message_id ?? NaN);
+      const rquote = String(m.replyQuote ?? m.reply_quote ?? '').trim();
+      const rrole = String(m.replyToRole ?? m.reply_to_role ?? '');
+
       const body = document.createElement('div');
       body.className = 'msg-body';
       body.innerHTML = renderMarkdown(m.content || '');
       decorateLinks(body);
+
       wrap.appendChild(role);
+      if (Number.isFinite(rid) && rquote) {
+        const stub = document.createElement('button');
+        stub.type = 'button';
+        stub.className = 'msg-reply-stub';
+        stub.setAttribute('data-jump-to-msg', String(rid));
+        stub.setAttribute('aria-label', 'Перейти до цитованого повідомлення');
+        const track = document.createElement('span');
+        track.className = 'msg-reply-stub-track';
+        const bar = document.createElement('span');
+        bar.className = 'msg-reply-stub-bar';
+        bar.setAttribute('aria-hidden', 'true');
+        const stubBody = document.createElement('span');
+        stubBody.className = 'msg-reply-stub-body';
+        const lab = document.createElement('span');
+        lab.className = 'msg-reply-stub-label';
+        lab.textContent = replyStubRoleLabel(rrole);
+        const qspan = document.createElement('span');
+        qspan.className = 'msg-reply-stub-quote';
+        qspan.textContent = rquote;
+        stubBody.appendChild(lab);
+        stubBody.appendChild(qspan);
+        track.appendChild(bar);
+        track.appendChild(stubBody);
+        stub.appendChild(track);
+        wrap.appendChild(stub);
+      }
       wrap.appendChild(body);
       thread.appendChild(wrap);
     }
@@ -360,8 +401,22 @@
     });
   }
 
-  // Single click handler delegates copy + check icon swap.
+  // Single click handler delegates reply-jump + copy + check icon swap.
   thread.addEventListener('click', (e) => {
+    const replyStub =
+      e.target instanceof Element ? e.target.closest('.msg-reply-stub') : null;
+    if (replyStub) {
+      const mid = replyStub.getAttribute('data-jump-to-msg');
+      if (!mid || !thread) return;
+      e.preventDefault();
+      const targetMsg = thread.querySelector('.msg[data-msg-id="' + mid + '"]');
+      if (targetMsg) {
+        targetMsg.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        targetMsg.classList.add('msg-highlight-flash');
+        setTimeout(() => targetMsg.classList.remove('msg-highlight-flash'), 1200);
+      }
+      return;
+    }
     const btn = /** @type {HTMLElement | null} */ (
       e.target instanceof Element ? e.target.closest('.code-copy-btn') : null
     );

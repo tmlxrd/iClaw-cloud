@@ -39,6 +39,7 @@
   /* Markdown (ChatGPT-ish link tone in prose) */
   --md-link: #2962ff;
   --md-link-hover: #1e54e5;
+  --info: #2962ff;
   --code-inline-bg: #f1f1f3;
   --code-inline-border: #e8e8eb;
   --code-inline-fg: #1f2937;
@@ -93,6 +94,7 @@
 
     --md-link: #7ab7ff;
     --md-link-hover: #a8d0ff;
+    --info: #7ab7ff;
     --code-inline-bg: #2a2a2a;
     --code-inline-border: #3a3a3a;
     --code-inline-fg: #e5e7eb;
@@ -335,6 +337,73 @@ html, body {
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
+}
+
+/* Reply preview strip (Telegram-style) — matches iClaw */
+.msg-reply-stub {
+  display: block;
+  width: 100%;
+  margin: 0 0 var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  border: none;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.msg-reply-stub:hover {
+  background: color-mix(in srgb, var(--text) 9%, transparent);
+}
+.msg-reply-stub-track {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-3);
+  width: 100%;
+}
+.msg-reply-stub-bar {
+  width: 3px;
+  flex: 0 0 auto;
+  border-radius: 2px;
+  background: var(--info);
+  align-self: stretch;
+}
+.msg-reply-stub-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+}
+.msg-reply-stub-label {
+  font-weight: 600;
+  color: var(--info);
+  font-size: 0.8em;
+  line-height: 1.2;
+}
+.msg-reply-stub-quote {
+  width: 100%;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.35;
+}
+.msg-highlight-flash {
+  animation: msgHighlightFlash 1.1s ease-out 1;
+}
+@keyframes msgHighlightFlash {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--info) 55%, transparent);
+    background: color-mix(in srgb, var(--info) 18%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 10px transparent;
+    background: transparent;
+  }
 }
 
 /* System notices — match iClaw: centered pill, role label stays sr-only */
