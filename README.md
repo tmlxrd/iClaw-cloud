@@ -1,6 +1,6 @@
 # iClaw cloud
 
-Companion **cloud share** server for [iClaw](https://github.com/tmlxrd/iClaw). Lets you publish a chat as an end-to-end encrypted link with a TTL: receivers open the URL in any browser and the chat decrypts client-side.
+Companion **cloud share** server for [iClaw](https://github.com/iClawApp/iClaw). Lets you publish a chat as an end-to-end encrypted link with a TTL: receivers open the URL in any browser and the chat decrypts client-side.
 
 The server stores **ciphertext only**. Keys live in the URL fragment (`#k=…`) and never reach the server. Optional password protection wraps the key with a PBKDF2-derived key so even the URL alone isn't enough.
 
@@ -27,7 +27,7 @@ Key generation, encryption, and decryption all happen in the browser via the Web
 Requirements: Node.js 20+, MongoDB (or `docker compose up -d`).
 
 ```bash
-git clone https://github.com/tmlxrd/iClaw-cloud.git
+git clone https://github.com/iClawApp/iClaw-cloud.git
 cd iClaw-cloud
 cp .env.example .env       # tweak BASE_URL + MONGO_URL if needed
 npm install

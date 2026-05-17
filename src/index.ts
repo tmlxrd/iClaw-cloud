@@ -119,9 +119,9 @@ function buildApp(): express.Express {
 async function main(): Promise<void> {
   await connectToDb();
   const app = buildApp();
-  const server = app.listen(config.port, () => {
+  const server = app.listen(config.port, config.host, () => {
     console.log(
-      `[iclaw-cloud] listening on ${config.baseUrl} (port ${config.port}, ${config.env})`,
+      `[iclaw-cloud] listening on ${config.baseUrl} (${config.host}:${config.port}, ${config.env})`,
     );
   });
 

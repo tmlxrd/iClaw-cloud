@@ -4,10 +4,10 @@
   "description": "End-to-end encrypted chat share server for iClaw. Stores ciphertext only; keys live in URL fragments or behind a password.",
   "private": true,
   "license": "MIT",
-  "homepage": "https://github.com/tmlxrd/iClaw-cloud",
+  "homepage": "https://github.com/iClawApp/iClaw-cloud",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tmlxrd/iClaw-cloud.git"
+    "url": "https://github.com/iClawApp/iClaw-cloud.git"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",

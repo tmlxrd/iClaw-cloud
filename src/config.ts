@@ -23,6 +23,12 @@ const RawConfigSchema = z.object({
   /** HTTP port. */
   PORT: z.coerce.number().int().positive().default(4000),
 
+  /**
+   * Bind address for the HTTP server.
+   * Default to localhost so the app is private behind nginx/cloudflared.
+   */
+  HOST: z.string().min(1).default('127.0.0.1'),
+
   /** Mongo connection string. Required — server can't run without storage. */
   MONGO_URL: z.string().min(1, 'MONGO_URL is required'),
 
@@ -141,6 +147,7 @@ export const config = Object.freeze({
   isProduction: raw.NODE_ENV === 'production',
   isTest: raw.NODE_ENV === 'test',
   port: raw.PORT,
+  host: raw.HOST,
   baseUrl: raw.BASE_URL.replace(/\/+$/, ''),
 
   /** Main iClaw app (viewer "Built by iClaw" link). */
